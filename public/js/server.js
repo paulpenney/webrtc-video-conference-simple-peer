@@ -21,7 +21,6 @@ if (location.href.substr(0, 5) !== "https") location.href = "https" + location.h
  */
 
 const configuration = {
-  // Using From https://www.metered.ca/tools/openrelay/
   iceServers: [
     {
       urls: "stun:openrelay.metered.ca:80",
@@ -48,21 +47,20 @@ const configuration = {
  * UserMedia constraints
  */
 let constraints = {
-  audio: true,
-  video: {
-    width: {
-      max: 1920,
+    audio: true,
+    video: {
+      width: {
+        ideal: 1920, // Set ideal width to 1920 pixels
+      },
+      height: {
+        ideal: 1080, // Set ideal height to 1080 pixels
+      },
+      frameRate: {
+        ideal: 30, // Set ideal frame rate to 30 fps
+      },
     },
-    height: {
-      max: 1080,
-    },
-    frameRate: {
-      max: 15,
-    },
-  },
-};
-
-/////////////////////////////////////////////////////////
+  };
+  
 
 constraints.video.facingMode = {
   ideal: "user",
@@ -70,7 +68,7 @@ constraints.video.facingMode = {
 
 // enabling the camera at startup
 navigator.mediaDevices
-  .getUserMedia(constraints)
+  .getDisplayMedia(constraints)
   .then((stream) => {
     console.log("Received local stream");
 
@@ -84,7 +82,7 @@ navigator.mediaDevices
     localVideo.play();
 
     function drawFrame() {
-      localContext.drawImage(localVideo, 0, 0, localCanvas.width, localCanvas.height);
+      localContext.drawImage(localVideo, 0, 0, 1920, 1080);
       requestAnimationFrame(drawFrame);
     }
 
@@ -102,13 +100,7 @@ function init() {
 
   socket.on("initReceive", (socket_id) => {
     console.log("INIT RECEIVE " + socket_id);
-    addPeer(socket_id, false);
-
-    socket.emit("initSend", socket_id);
-  });
-
-  socket.on("initSend", (socket_id) => {
-    console.log("INIT SEND " + socket_id);
+    socket.emit("initSend", socket_id); // Tell the client to start sending data
     addPeer(socket_id, true);
   });
 
@@ -125,7 +117,11 @@ function init() {
   });
 
   socket.on("signal", (data) => {
-    peers[data.socket_id].signal(data.signal);
+    if (peers[data.socket_id]) {
+      peers[data.socket_id].signal(data.signal);
+    } else {
+      console.error(`Peer with socket ID ${data.socket_id} does not exist`);
+    }
   });
 }
 
@@ -135,10 +131,6 @@ function init() {
  * @param {String} socket_id
  */
 function removePeer(socket_id) {
-  let canvasEl = document.getElementById(socket_id);
-  if (canvasEl) {
-    canvasEl.parentNode.removeChild(canvasEl);
-  }
   if (peers[socket_id]) peers[socket_id].destroy();
   delete peers[socket_id];
 }
@@ -152,6 +144,7 @@ function removePeer(socket_id) {
  *                  Set to false if the peer receives the connection.
  */
 function addPeer(socket_id, am_initiator) {
+  console.log("Adding peer:", socket_id);
   peers[socket_id] = new SimplePeer({
     initiator: am_initiator,
     stream: localStream,
@@ -165,51 +158,21 @@ function addPeer(socket_id, am_initiator) {
     });
   });
 
-  peers[socket_id].on("icecandidate", (event) => {
-    if (event.candidate) {
-      console.log("ICE Candidate:", event.candidate);
-      socket.emit("signal", {
-        signal: { candidate: event.candidate },
-        socket_id: socket_id,
-      });
-    }
-  });
-
   peers[socket_id].on("error", (error) => {
     console.error("RTC Peer Connection Error:", error);
   });
 
+  peers[socket_id].on("connect", () => {
+    console.log("Peer connected:", socket_id);
+  });
+
   peers[socket_id].on("stream", (stream) => {
-    let newCanvas = document.createElement("canvas");
-    newCanvas.id = socket_id;
-    newCanvas.className = "vid";
-    videos.appendChild(newCanvas);
-
-    const context = newCanvas.getContext("2d");
-    const video = document.createElement("video");
-    video.srcObject = stream;
-    video.play();
-
-    function drawFrame() {
-      context.drawImage(video, 0, 0, newCanvas.width, newCanvas.height);
-      requestAnimationFrame(drawFrame);
-    }
-
-    drawFrame();
+    console.log("Stream received from peer:", socket_id);
   });
 }
 
 /**
- * Opens an element in Picture-in-Picture mode
- * @param {HTMLVideoElement} el video element to put in pip mode
- */
-function openPictureMode(el) {
-  console.log("opening pip");
-  el.requestPictureInPicture();
-}
-
-/**
- * Switches the camera between user and environment. It will just enable the camera 2 cameras not supported.
+ * Switches the camera between user and environment.
  */
 function switchMedia() {
   if (constraints.video.facingMode.ideal === "user") {
@@ -224,7 +187,7 @@ function switchMedia() {
     track.stop();
   });
 
-  navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
+  navigator.mediaDevices.getDisplayMedia(constraints).then((stream) => {
     for (let socket_id in peers) {
       for (let index in peers[socket_id].streams[0].getTracks()) {
         for (let index2 in stream.getTracks()) {
@@ -250,7 +213,7 @@ function switchMedia() {
     localVideo.play();
 
     function drawFrame() {
-      localContext.drawImage(localVideo, 0, 0, localCanvas.width, localCanvas.height);
+      localContext.drawImage(localVideo, 0, 0, 1920, 1080);
       requestAnimationFrame(drawFrame);
     }
 
@@ -258,63 +221,6 @@ function switchMedia() {
 
     updateButtons();
   });
-}
-
-/**
- * Enable screen share
- */
-function setScreen() {
-  navigator.mediaDevices.getDisplayMedia().then((stream) => {
-    for (let socket_id in peers) {
-      for (let index in peers[socket_id].streams[0].getTracks()) {
-        for (let index2 in stream.getTracks()) {
-          if (peers[socket_id].streams[0].getTracks()[index].kind === stream.getTracks()[index2].kind) {
-            peers[socket_id].replaceTrack(
-              peers[socket_id].streams[0].getTracks()[index],
-              stream.getTracks()[index2],
-              peers[socket_id].streams[0]
-            );
-            break;
-          }
-        }
-      }
-    }
-    localStream = stream;
-
-    // Update the canvas with the new stream
-    const localCanvas = document.getElementById("localCanvas");
-    const localContext = localCanvas.getContext("2d");
-    const localVideo = document.createElement("video");
-    localVideo.srcObject = stream;
-    localVideo.play();
-
-    function drawFrame() {
-      localContext.drawImage(localVideo, 0, 0, localCanvas.width, localCanvas.height);
-      requestAnimationFrame(drawFrame);
-    }
-
-    drawFrame();
-
-    socket.emit("removeUpdatePeer", "");
-  });
-  updateButtons();
-}
-
-/**
- * Disables and removes the local stream and all the connections to other peers.
- */
-function removeLocalStream() {
-  if (localStream) {
-    const tracks = localStream.getTracks();
-
-    tracks.forEach(function (track) {
-      track.stop();
-    });
-  }
-
-  for (let socket_id in peers) {
-    removePeer(socket_id);
-  }
 }
 
 /**

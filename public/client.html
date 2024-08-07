@@ -16,23 +16,18 @@
         .vid {
             zoom: 100%;
             width: 100%;
+       
         }
     </style>
 </head>
 
 <body>
     <div class="container">
-        <canvas id="localCanvas" class="vid"></canvas>
     </div>
-    <br />
-    <div style="display:block">
-        <button id="switchButton" class="settings" onclick="switchMedia()">Switch Camera</button>
-        <button id="muteButton" class="settings" onclick="toggleMute()">Unmuted</button>
-        <button id="vidButton" class="settings" onclick="toggleVid()">Video Enabled</button>
-    </div>
+    <button id="startButton">Start Video</button>
 </body>
 <footer>
-    <script src='/js/server.js' lang="text/javascript"></script>
+    <script src='/js/client.js' lang="text/javascript"></script>
 </footer>
 
 </html>
